@@ -17,11 +17,12 @@ for num in range(1, WORKSHOP_NUM_SESSIONS + 1):
     WORKSHOP_SESSION_HEADERS.append(f'Session {num}')
 
 def import_student_preferences(students_file):
-    students_df = pd.read_csv(students_file, sep='\t')
+    students_df = pd.read_csv(students_file, sep='\t', dtype={'Grade':'int8'})
     return students_df
 
 def import_workshop_df(workshop_file):
     workshop = pd.read_csv(workshop_file, sep='\t')
+    workshop['Max Attendance'] = workshop['Max Attendance'].fillna(16)
     return workshop
 
 #go through each col that represents an individual workshop
@@ -70,9 +71,10 @@ def convert_workshop_pref_columns(student_preference_df, workshop_df):
 def schedule_students(student_preference_df, workshop_df):
     student_placements = student_preference_df[['Name', 'Email', 'Grade']]
     student_placements.set_index('Email', inplace=True)
-    student_placements[WORKSHOP_PREFERENCES_HEADERS] = "Unscheduled"
-    workshop_enrollments = workshop_df[['Name', 'Location', 'Capacity']]
-    workshop_enrollments['Attendance Count'] = 0
+    student_placements[WORKSHOP_SESSION_HEADERS] = "Unscheduled"
+    workshop_enrollments = workshop_df[['Name', 'Location', 'Max Attendance']]
+    for i in range(1, WORKSHOP_NUM_SESSIONS + 1):
+        workshop_enrollments.loc[:, f'Attendance Count Session {i}'] = 0
 
     workshop_names = workshop_df["Name"].array
     # for each preference level
@@ -80,37 +82,48 @@ def schedule_students(student_preference_df, workshop_df):
         # for each workshop, get a list of students who put it at that preference level
         for workshop in workshop_names:
             students_who_want_workshop = student_preference_df[student_preference_df[
-                                                                   f'Workshop Preference {pref}'] == workshop]
-            sessions = workshop_df.iloc['Name' == workshop]['Availability'].split(',')
+                                                                   f'Preference {pref}'] == workshop]
+            sessions = workshop_df.loc[workshop_df['Name'] == workshop, 'Availability'].values[0].split(',')
             for session in sessions:
                 # merge current scheduled students with students_available_df, merge on email
                 # use this dataframe to pull students who are unscheduled for that session
-                students_available_for_workshop = pd.merge(students_who_want_workshop, student_placements,
-                                                           on='Email', how='left')
-                students_available_for_workshop = students_available_for_workshop.apply(
-                    lambda row: row[f"Session {session}"] == 'None' and row[[WORKSHOP_SESSION_HEADERS]] != workshop
-                    , axis=1)
-
+                data = pd.merge(students_who_want_workshop, student_placements,
+                                                           on='Email', how='left', suffixes=('', '_y'))
+                data = data.loc[:, ~data.columns.str.endswith('_y')] #drops repeat cols on merge
+                students_available_for_workshop = data[(data[f"Session {session}"] == 'Unscheduled')]
+                students_available_for_workshop = students_available_for_workshop[
+                    (students_available_for_workshop[WORKSHOP_SESSION_HEADERS] != workshop).all(axis=1)]
+                a= workshop_enrollments.loc[workshop_enrollments['Name'] == workshop, 'Max Attendance'].values[0]
+                b= workshop_enrollments.loc[workshop_enrollments['Name'] == workshop, f'Attendance Count Session {session}'].values[0]
                 # sample students based on current attendance
-                students_selected = students_available_for_workshop.sample(
-                    n=(workshop_enrollments.loc[workshop]['Max Attendance'] -
-                       workshop_enrollments.loc[workshop]['Attendance Count']) / 1, axis=0)
+                if (a - b) > 0:
+                    students_selected = students_available_for_workshop.sample(n=min(int(a - b), len(students_available_for_workshop)), axis=0)
 
-                # schedule students and update student_placements accordingly
-                # locate each student in student_placements, add the workshop name to the Session n column
-                students_selected[f'Session {session}'] = workshop
-                student_placements = pd.merge(student_placements, students_selected,
-                                              on=f'Session {session}', how='inner')
-                workshop_enrollments['Attendance Count'][f"Session {session}"] += len(students_selected)
+                    # schedule students and update student_placements accordingly
+                    # locate each student in student_placements, add the workshop name to the Session n column
+                    student_placements.loc[students_selected["Email"], f"Session {session}"] = workshop
+                    #drop_y(rename_x(
+                    workshop_enrollments.loc[workshop_enrollments['Name']==workshop, f'Attendance Count Session {session}'] += len(students_selected)
 
     return student_placements, workshop_enrollments
+
+def drop_y(df):
+    # list comprehension of the cols that end with '_y'
+    to_drop = [x for x in df if x.endswith('_y')]
+    df.drop(to_drop, axis=1, inplace=True)
+    return df
+# func to rename '_x' cols
+def rename_x(df):
+    for col in df:
+        if col.endswith('_x'):
+            df.rename(columns={col:col.rstrip('_x')}, inplace=True)
+    return df
 
 def main():
     workshop_df = import_workshop_df('./data/workshop_data.tsv')
     student_df = import_student_preferences('./data/student_preferences.tsv')
     student_df = convert_workshop_pref_columns(student_df, workshop_df)
     student_placements, workshop_enrollments = schedule_students(student_df, workshop_df)
-    print
 
 if __name__ == '__main__':
     main()
