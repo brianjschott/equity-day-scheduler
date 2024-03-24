@@ -107,18 +107,6 @@ def schedule_students(student_preference_df, workshop_df):
 
     return student_placements, workshop_enrollments
 
-def drop_y(df):
-    # list comprehension of the cols that end with '_y'
-    to_drop = [x for x in df if x.endswith('_y')]
-    df.drop(to_drop, axis=1, inplace=True)
-    return df
-# func to rename '_x' cols
-def rename_x(df):
-    for col in df:
-        if col.endswith('_x'):
-            df.rename(columns={col:col.rstrip('_x')}, inplace=True)
-    return df
-
 def main():
     workshop_df = import_workshop_df('./data/workshop_data.tsv')
     student_df = import_student_preferences('./data/student_preferences.tsv')
