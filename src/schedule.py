@@ -1,9 +1,10 @@
 import pandas as pd
-import numpy as np
-from tabulate import tabulate
 
-
-EIGHTH_GRADE_WORKSHOP_SESSION = 1 #TODO: 8TH GRADE DISCUSSION SECTION, 4TH FLOOR NORTH
+GRADE_8_WORKSHOP = {
+    "name": "Eighth Grade Discussion",
+    "session": 1,
+    "location": "4th Floor North"
+}
 
 WORKSHOP_NUM_SESSIONS = 3
 NUMBER_OF_PREFERENCES = 5
@@ -24,6 +25,9 @@ def import_workshop_df(workshop_file):
     workshop = pd.read_csv(workshop_file, sep='\t')
     workshop['Max Attendance'] = workshop['Max Attendance'].fillna(16)
     return workshop
+
+def import_student_facilitator_df(facilitator_filepath):
+    return pd.read_csv(facilitator_filepath, sep='\t')
 
 #go through each col that represents an individual workshop
 #for each col,
@@ -107,9 +111,25 @@ def schedule_students(student_preference_df, workshop_df):
 
     return student_placements, workshop_enrollments
 
+#anyone who is an 8th grader gets a discussion section at that period
+def schedule_eighth_grade_discussion(student_df, grade_8_workshop):
+    student_df.loc[student_df['Grade'] == 8, f"Session {grade_8_workshop.session}"] = grade_8_workshop.name
+    return student_df
+
+#schedules workshop moderators into their designated sessions
+#spreadsheet lists name, email, workshop, and sessions
+#returns student df, workshop_df not necessary because these students don't
+#count for attendance purposes
+def schedule_workshop_moderators(student_df, student_moderators_df):
+    # TODO:onvert comma-separated list into array
+    return True
+
+def is_student_excluded(exclusions_df, student_name, workshop_name):
+    return True
 def main():
     workshop_df = import_workshop_df('./data/workshop_data.tsv')
     student_df = import_student_preferences('./data/student_preferences.tsv')
+    student_df = schedule_eighth_grade_discussion(student_df, GRADE_8_WORKSHOP)
     student_df = convert_workshop_pref_columns(student_df, workshop_df)
     student_placements, workshop_enrollments = schedule_students(student_df, workshop_df)
 
