@@ -17,21 +17,17 @@ WORKSHOP_SESSION_HEADERS = []
 for num in range(1, WORKSHOP_NUM_SESSIONS + 1):
     WORKSHOP_SESSION_HEADERS.append(f'Session {num}')
 
-
 def import_student_preferences(students_file):
     students_df = pd.read_csv(students_file, sep='\t', dtype={'Grade': 'int8'})
     return students_df
-
 
 def import_workshop_df(workshop_file):
     workshop = pd.read_csv(workshop_file, sep='\t')
     workshop['Max Attendance'] = workshop['Max Attendance'].fillna(16)
     return workshop
 
-
 def import_student_facilitator_df(facilitator_filepath):
     return pd.read_csv(facilitator_filepath, sep='\t')
-
 
 # go through each col that represents an individual workshop
 # for each col,
@@ -48,8 +44,8 @@ def convert_workshop_pref_columns(student_preference_df, workshop_df):
                                                                       regex=True)
     student_preference_df_final.fillna(0, inplace=True)
     student_preference_df_final[workshop_pref_cols] = student_preference_df_final[workshop_pref_cols].astype("int8")
-    # replace the rest with zeroes
 
+    # replace the rest with zeroes
     for pref in range(1, NUMBER_OF_PREFERENCES + 1):
         student_preference_df_final[f"Preference {pref}"] = student_preference_df_final[workshop_pref_cols].apply(
             lambda row: row[row == pref].index[0] if len(row[row == pref]) > 0 else "None", axis=1)
@@ -66,9 +62,7 @@ def convert_workshop_pref_columns(student_preference_df, workshop_df):
     #     diff = frame2[~frame2.isin(frame1)].values
     #     if len(diff) > 0:
     #         raise Exception("Name mismatch")
-
     return student_preference_df_final
-
 
 # arguments: student_preference_df, workshop_df
 # returns a dataframe of students and workshop placements, and a workshop df of attendance and max capacities
@@ -116,22 +110,18 @@ def schedule_students(student_preference_df, workshop_df):
                     workshop_enrollments.loc[
                         workshop_enrollments['Name'] == workshop, f'Attendance Count Session {session}'] += len(
                         students_selected)
-
     return student_placements, workshop_enrollments
-
 
 # anyone who is an 8th grader gets a discussion section at that period
 def schedule_eighth_grade_discussion(student_df, grade_8_workshop):
     student_df.loc[student_df['Grade'] == 8, f"Session {grade_8_workshop.session}"] = grade_8_workshop.name
     return student_df
 
-
 # schedules workshop moderators into their designated sessions
 # spreadsheet lists name, email, workshop, and sessions
 # returns student df, workshop_df not necessary because these students don't
 # count for attendance purposes
 def schedule_workshop_facilitators(student_df, student_facilitators_df):
-    # TODO: convert comma-separated list into array with .values[0].split(',') or .array?
 
     student_df = student_df.apply(
         lambda row: add_facilitator_to_workshop(row, student_facilitators_df.loc[row["Name"], "Sessions"]))
@@ -145,7 +135,10 @@ def add_facilitator_to_workshop(row, workshop_name):
         row[f"Session {session}"] = workshop_name
     return row
 
-def is_student_excluded(exclusions_df, student_name, workshop_name):
+# takes exclusions_df, the student's name, and the workshop's name
+# if the student is on the exclusions list for that workshop, return False
+def is_student_eligible(exclusions_df, student_name, workshop_name):
+    
 
     return True
 
@@ -163,3 +156,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# TODO:
