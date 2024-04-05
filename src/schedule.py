@@ -1,5 +1,7 @@
 import pandas as pd
 
+#TODO: Change the scheduling to use the 8th grade session column, schedule
+# 8th graders for Session 1
 GRADE_8_WORKSHOP = {
     "name": "Eighth Grade Discussion",
     "session": 1,
@@ -17,17 +19,21 @@ WORKSHOP_SESSION_HEADERS = []
 for num in range(1, WORKSHOP_NUM_SESSIONS + 1):
     WORKSHOP_SESSION_HEADERS.append(f'Session {num}')
 
+
 def import_student_preferences(students_file):
     students_df = pd.read_csv(students_file, sep='\t', dtype={'Grade': 'int8'})
     return students_df
+
 
 def import_workshop_df(workshop_file):
     workshop = pd.read_csv(workshop_file, sep='\t')
     workshop['Max Attendance'] = workshop['Max Attendance'].fillna(16)
     return workshop
 
+
 def import_student_facilitator_df(facilitator_filepath):
     return pd.read_csv(facilitator_filepath, sep='\t')
+
 
 # go through each col that represents an individual workshop
 # for each col,
@@ -64,6 +70,7 @@ def convert_workshop_pref_columns(student_preference_df, workshop_df):
     #         raise Exception("Name mismatch")
     return student_preference_df_final
 
+
 # arguments: student_preference_df, workshop_df
 # returns a dataframe of students and workshop placements, and a workshop df of attendance and max capacities
 # student df
@@ -93,6 +100,7 @@ def schedule_students(student_preference_df, workshop_df):
                                 on='Email', how='left', suffixes=('', '_y'))
                 data = data.loc[:, ~data.columns.str.endswith('_y')]  # drops repeat cols on merge
                 students_available_for_workshop = data[(data[f"Session {session}"] == 'Unscheduled')]
+                # eliminates students who are already scheduled for workshop
                 students_available_for_workshop = students_available_for_workshop[
                     (students_available_for_workshop[WORKSHOP_SESSION_HEADERS] != workshop).all(axis=1)]
                 a = workshop_enrollments.loc[workshop_enrollments['Name'] == workshop, 'Max Attendance'].values[0]
@@ -112,21 +120,22 @@ def schedule_students(student_preference_df, workshop_df):
                         students_selected)
     return student_placements, workshop_enrollments
 
+
 # anyone who is an 8th grader gets a discussion section at that period
 def schedule_eighth_grade_discussion(student_df, grade_8_workshop):
     student_df.loc[student_df['Grade'] == 8, f"Session {grade_8_workshop.session}"] = grade_8_workshop.name
     return student_df
+
 
 # schedules workshop moderators into their designated sessions
 # spreadsheet lists name, email, workshop, and sessions
 # returns student df, workshop_df not necessary because these students don't
 # count for attendance purposes
 def schedule_workshop_facilitators(student_df, student_facilitators_df):
-
     student_df = student_df.apply(
         lambda row: add_facilitator_to_workshop(row, student_facilitators_df.loc[row["Name"], "Sessions"]))
-
     return student_df
+
 
 def add_facilitator_to_workshop(row, workshop_name):
     # get availability from row, convert to array
@@ -135,26 +144,64 @@ def add_facilitator_to_workshop(row, workshop_name):
         row[f"Session {session}"] = workshop_name
     return row
 
-# takes exclusions_df, the student's name, and the workshop's name
-# if the student is on the exclusions list for that workshop, return False
-def is_student_eligible(exclusions_df, student_name, workshop_name):
-    
 
-    return True
+# takes student_df and exclusions_df
+# changes all instances of workshop preferences
+def erase_ineligible_student_prefs(student_df, exclusions_df):
+    merged_df = pd.merge(student_df, exclusions_df, on="Email")
+    merged_df[WORKSHOP_SESSION_HEADERS] = merged_df.apply(
+        lambda row: erase_student_prefs(row)
+    )
+    merged_df = merged_df.drop(['Excluded Workshop'])
+    return merged_df
+
+
+def erase_student_prefs(row):
+    for session in WORKSHOP_SESSION_HEADERS:
+        if row[session] == row["Excluded Workshop"]:
+            row[session] = "None"
+    return row
+
 
 def import_exclusions(exclusions_filepath):
     return pd.read_csv(exclusions_filepath, sep='\t')
+
+
+# returns df with students placed in leftover workshops
+# iterate over the student_df, for each with "Unscheduled",
+# place them in a leftover workshop
+def schedule_leftover_students(student_df, workshop_df):
+    for session in WORKSHOP_SESSION_HEADERS:
+        student_df[session] = (student_df[session].apply(
+            lambda row: schedule_student_in_lowest_attended_freetalk(
+                row, workshop_df, session)))
+    return student_df
+
+
+def schedule_student_in_lowest_attended_freetalk(row, workshop_df, session):
+    # ensure student isn't already scheduled for the workshop by removing any rows for
+    # that session from workshop_df where the student is already scheduled for that talk
+    workshop_df_not_already_scheduled = workshop_df[workshop_df[session] != row[session]]
+
+    lowest_attended_workshop = workshop_df_not_already_scheduled[
+
+        workshop_df_not_already_scheduled["Is Freetalk"] == True &
+        workshop_df_not_already_scheduled[f"Attendance Count Session {session}"]
+        == workshop_df_not_already_scheduled[f"Attendance Count Session {session}"].min()]
+    row[session] = lowest_attended_workshop["Name"]
+    return row
+
 
 def main():
     workshop_df = import_workshop_df('./data/workshop_data.tsv')
     student_df = import_student_preferences('./data/student_preferences.tsv')
     exclusions_df = import_exclusions('./data/exclusions.tsv')
-    student_df = schedule_eighth_grade_discussion(student_df, GRADE_8_WORKSHOP)
     student_df = convert_workshop_pref_columns(student_df, workshop_df)
+    student_df = schedule_eighth_grade_discussion(student_df, GRADE_8_WORKSHOP)
+    student_df = erase_ineligible_student_prefs(student_df, exclusions_df)
     student_placements, workshop_enrollments = schedule_students(student_df, workshop_df)
+    student_placements = schedule_leftover_students(student_placements, workshop_df)
 
 
 if __name__ == '__main__':
     main()
-
-# TODO:
