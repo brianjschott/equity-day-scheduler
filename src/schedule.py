@@ -1,5 +1,7 @@
 import pandas as pd
-import matplotlib as mlp
+import matplotlib.pyplot as plt
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
 
 
 GRADE_8_WORKSHOP_SESSION = 1
@@ -203,13 +205,13 @@ def import_exclusions(exclusions_filepath):
 def schedule_leftover_students(student_df, workshop_df, workshop_enrollments):
 
     for session in range(1, WORKSHOP_NUM_SESSIONS + 1):
-        print("Leftovers for session " + str(session))
-        print(student_df[student_df[f"Session {session}"] == "Unscheduled"])
+        #print("Leftovers for session " + str(session))
+        #print(student_df[student_df[f"Session {session}"] == "Unscheduled"])
         student_df = student_df.apply(
             lambda row: schedule_student_in_lowest_attended_freetalk(
                 row, workshop_df, session, workshop_enrollments), axis=1)
-        print("Now the leftovers are...")
-        print(student_df[student_df[f"Session {session}"] == "Unscheduled"])
+        #print("Now the leftovers are...")
+        #print(student_df[student_df[f"Session {session}"] == "Unscheduled"])
 
     return student_df, workshop_enrollments
 
@@ -217,7 +219,7 @@ def schedule_leftover_students(student_df, workshop_df, workshop_enrollments):
 def schedule_student_in_lowest_attended_freetalk(row, workshop_df, session, workshop_enrollments):
     # ensure student isn't already scheduled for the workshop by removing any rows for
     # that session from workshop_df where the student is already scheduled for that talk
-    workshop_df_not_already_scheduled = workshop_enrollments[workshop_enrollments['Name'] != row[f'Session {session}']]
+    workshop_df_not_already_scheduled = workshop_enrollments[~workshop_enrollments['Name'].isin(row[WORKSHOP_SESSION_HEADERS])]
 
     #if no workshops meet this criteria, return the row with nothing changed
     if workshop_df_not_already_scheduled.shape[0] < 1 or row[f'Session {session}'] != 'Unscheduled':
@@ -269,6 +271,48 @@ def main():
     for session in range(1, WORKSHOP_NUM_SESSIONS + 1):
         workshop_enrollments = workshop_enrollments.apply(lambda row:get_students_for_workshop(row, student_placements, session), axis=1)
     workshop_enrollments.to_csv('./data/workshop_enrollments.tsv', sep='\t')
+
+    check_for_dupes(student_placements)
+    get_stats(workshop_enrollments)
+
+def get_stats(workshop_enrollments):
+    # show attendance for each workshop as a histogram in groups
+    for session in range(1, WORKSHOP_NUM_SESSIONS + 1):
+        session_attendance_count = workshop_enrollments[['Name', f'Attendance Count Session {session}']]
+        fig, ax = plt.subplots()
+        plt.figure(figsize=(20,3))
+        plt.xticks(rotation=45)
+        ax.bar(workshop_enrollments['Name'], workshop_enrollments[f'Attendance Count Session {session}'])
+        ax.set_xlabel('Workshops')
+        ax.set_ylabel('Attendance Count')
+        ax.set_title(f'Session {session}')
+
+        plt.show()
+        plt.savefig(f'./data/attendance_session{session}.png', bbox_inches='tight')
+
+def check_for_dupes(student_placements):
+    # get rows that have values repeated
+    student_placement_duplicates = student_placements[student_placements[WORKSHOP_SESSION_HEADERS].apply(lambda row: has_duplicates(row), axis=1)]
+    facilitators = import_student_facilitator_df('./data/facilitators.tsv')
+    student_placement_duplicates_not_facilitators = student_placement_duplicates[~student_placement_duplicates['Email'].isin(facilitators['Email'])]
+    if (len(student_placement_duplicates_not_facilitators) > 0):
+        print('Duplicates are: ')
+        print(student_placement_duplicates_not_facilitators)
+    else:
+        print('No duplicates')
+
+
+def has_duplicates(row):
+    # convert row to list
+    # loop over list, if the element is repeated, return True
+    # else return False
+    row = row.array
+    for i in range(len(row)):
+        for j in range(i+1, len(row)):
+            if row[i] == row[j]:
+                return True
+    return False
+
 def get_students_for_workshop(row, student_placements, session):
     workshop_name = row['Name']
     row[f'Session {session} Roster Names'] = student_placements.loc[
